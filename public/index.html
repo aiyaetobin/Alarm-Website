@@ -258,6 +258,7 @@
 
         // Load alarm
         async function loadAlarm() {
+            triggeredAlarmId = false;
             try {
                 const response = await fetch('/alarm');
                 const data = await response.json();
