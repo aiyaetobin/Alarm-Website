@@ -264,7 +264,7 @@
                     const startTime = new Date(challenge.challenge_start_time).getTime();
                     const now = Date.now();
                     const elapsedSeconds = Math.floor((now - startTime) / 1000);
-                    let timeRemaining = Math.max(0, 10 - elapsedSeconds);
+                    let timeRemaining = Math.max(0, 300 - elapsedSeconds);
                     const minutes = Math.floor(timeRemaining / 60);
                     const seconds = timeRemaining % 60;
                     document.getElementById('timeRemaining').textContent = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
@@ -372,9 +372,9 @@
         function startCountdown() {
             if (countdownInterval) clearInterval(countdownInterval);
             if (resumeCountdownInterval) clearInterval(resumeCountdownInterval);
-            let timeRemaining = 10;
+            let timeRemaining = 300;
             hasFailed = false;
-            document.getElementById('timeRemaining').textContent = '0:10';
+            document.getElementById('timeRemaining').textContent = '5:00';
             countdownInterval = setInterval(async () => {
                 timeRemaining--;
                 if (timeRemaining <= 0) timeRemaining = 0;
