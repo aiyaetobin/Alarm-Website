@@ -170,6 +170,7 @@
         let hasFailed = false;
         let hasResumeCountdownFailed = false;
         let triggeredAlarmId = false;
+        let challengeActive = false;
 
         async function checkAuth() {
             try {
@@ -223,7 +224,6 @@
         });
 
         async function loadAlarm() {
-            triggeredAlarmId = false;
             try {
                 const response = await fetch('/alarm');
                 const data = await response.json();
@@ -251,14 +251,14 @@
             }
         }
 
-        loadAlarm();
-
         async function loadChallengeState() {
             try {
                 const response = await fetch('/challenge/status');
                 const data = await response.json();
                 const challenge = data.challenge;
                 if (challenge.challenge_active) {
+                    challengeActive = true;
+                    triggeredAlarmId = true;
                     startLat = challenge.challenge_start_lat;
                     startLon = challenge.challenge_start_lon;
                     const startTime = new Date(challenge.challenge_start_time).getTime();
@@ -278,6 +278,7 @@
                         if (remaining === 0 && !hasResumeCountdownFailed) {
                             hasResumeCountdownFailed = true;
                             clearInterval(resumeCountdownInterval);
+                            challengeActive = false;
                             await fetch('/challenge/fail', { method: 'POST' });
                             alert('Time ran out! Challenge failed.');
                         }
@@ -290,6 +291,7 @@
                         const distanceRemaining = Math.max(0, distance - distanceTraveled);
                         document.getElementById('distanceToGo').textContent = Math.round(distanceRemaining) + ' m';
                         if (distanceRemaining === 0) {
+                            challengeActive = false;
                             await fetch('/challenge/complete', { method: 'POST' });
                             alert('Challenge completed! You made it!');
                         }
@@ -299,8 +301,6 @@
                 console.error('Error loading challenge state:', error);
             }
         }
-
-        loadChallengeState();
 
         document.getElementById('createAlarmForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -337,6 +337,7 @@
         }
 
         function checkAlarms() {
+            if (challengeActive) return;
             if (!currentAlarm || !currentAlarm.alarm_time) return;
             const now = new Date();
             const currentHour = String(now.getHours()).padStart(2, '0');
@@ -356,7 +357,12 @@
             }
         }
 
-        setInterval(checkAlarms, 1000);
+        async function init() {
+            await Promise.all([loadAlarm(), loadChallengeState()]);
+            setInterval(checkAlarms, 1000);
+        }
+
+        init();
 
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371000;
@@ -385,6 +391,7 @@
                 if (timeRemaining === 0 && !hasFailed) {
                     hasFailed = true;
                     clearInterval(countdownInterval);
+                    challengeActive = false;
                     await fetch('/challenge/fail', { method: 'POST' });
                     alert('Time ran out! Challenge failed.');
                 }
@@ -392,7 +399,10 @@
         }
 
         async function startChallenge(distance) {
+            if (challengeActive) return;
             if (!distance) distance = 100;
+            challengeActive = true;
+            triggeredAlarmId = true;
             startLat = null;
             startLon = null;
             startCountdown();
@@ -412,6 +422,7 @@
                 const distanceRemaining = Math.max(0, distance - distanceTraveled);
                 document.getElementById('distanceToGo').textContent = Math.round(distanceRemaining) + ' m';
                 if (distanceRemaining === 0) {
+                    challengeActive = false;
                     await fetch('/challenge/complete', { method: 'POST' });
                     alert('Challenge completed! You made it!');
                 }

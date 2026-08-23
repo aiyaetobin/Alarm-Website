@@ -196,15 +196,25 @@ app.post('/challenge/start', async (req, res) =>
 
     try
     {
+        const existing = await pool.query(
+            'SELECT challenge_active, challenge_start_lat, challenge_start_lon, challenge_start_time FROM users WHERE id = $1',
+            [req.userId]
+        );
+
+        if (existing.rows.length === 0)
+        {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        if (existing.rows[0].challenge_active)
+        {
+            return res.json({ message: 'Challenge already active', challenge: existing.rows[0] });
+        }
+
         const result = await pool.query(
             'UPDATE users SET challenge_active = true, challenge_start_lat = $1, challenge_start_lon = $2, challenge_start_time = NOW() WHERE id = $3 RETURNING challenge_active, challenge_start_lat, challenge_start_lon, challenge_start_time',
             [startLat, startLon, req.userId]
         );
-
-        if (result.rows.length === 0)
-        {
-            return res.status(404).json({ error: 'User not found' });
-        }
 
         res.json({ message: 'Challenge started', challenge: result.rows[0] });
     } catch (error)
