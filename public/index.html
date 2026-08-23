@@ -463,6 +463,9 @@
             let timeRemaining = 10;
             hasFailed = false;
 
+            document.getElementById('timeRemaining').textContent = '0:10';
+
+
             countdownInterval = setInterval(async () => {
                 timeRemaining--;
 
@@ -494,7 +497,8 @@
         // Start challenge
         async function startChallenge(distance) {
             if (!distance) distance = 100;
-
+            startLat = null;
+            startLon = null;
             console.log('Challenge Started with distance goal:', distance);
 
             startCountdown();
