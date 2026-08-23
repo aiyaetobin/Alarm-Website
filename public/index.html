@@ -159,12 +159,9 @@
 
         <button id="startBtn">Start Challenge</button>
         <button id="logoutBtn">Logout</button>
-
-        <div id="status"></div>
     </div>
 
     <script>
-        // Global variables
         let currentAlarm = null;
         let startLat = null;
         let startLon = null;
@@ -174,7 +171,6 @@
         let hasResumeCountdownFailed = false;
         let triggeredAlarmId = false;
 
-        // Check authentication
         async function checkAuth() {
             try {
                 const response = await fetch('/me');
@@ -188,40 +184,18 @@
 
         checkAuth();
 
-        // Register service worker
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/service-worker.js')
-                .then((registration) => {
-                    console.log('Service worker registered:', registration);
-                })
-                .catch((error) => {
-                    console.error('Service worker registration failed:', error);
-                });
+            navigator.serviceWorker.register('/service-worker.js').catch(e => console.log('SW failed:', e));
         }
 
-        // Enable notifications button
         document.getElementById('enableNotificationsBtn').addEventListener('click', () => {
-            if (!('Notification' in window)) {
-                alert('This browser does not support notifications');
-                return;
-            }
-
             if (Notification.permission === 'granted') {
                 alert('Notifications already enabled!');
                 return;
             }
-
-            Notification.requestPermission().then((permission) => {
-                if (permission === 'granted') {
-                    console.log('Notification permission granted');
-                    alert('Notifications enabled!');
-                } else {
-                    console.log('Notification permission denied');
-                }
-            });
+            Notification.requestPermission();
         });
 
-        // Stripe payment setup
         const stripe = Stripe('pk_test_51U6mAnI5pwWYahen1eFNAblkY64OitzHbyZxKix9rMFIyfjA4FFDrfvGhofdSs1R4lqhKxtHNoSZnld5SYIhq3hY00xPTfN1rV');
         const elements = stripe.elements();
         const cardElement = elements.create('card');
@@ -229,57 +203,43 @@
 
         document.getElementById('paymentForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-
             const { token } = await stripe.createToken(cardElement);
-
             if (token) {
-                try {
-                    const response = await fetch('/setup-payment', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ stripeToken: token.id })
-                    });
-
-                    const data = await response.json();
-
-                    if (response.ok) {
-                        document.getElementById('paymentStatus').textContent = '✓ Payment method saved!';
-                        document.getElementById('paymentStatus').style.color = 'green';
-                        cardElement.clear();
-                    } else {
-                        document.getElementById('paymentStatus').textContent = '✗ Error: ' + data.error;
-                        document.getElementById('paymentStatus').style.color = 'red';
-                    }
-                } catch (error) {
-                    console.error('Error:', error);
+                const response = await fetch('/setup-payment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stripeToken: token.id })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('paymentStatus').textContent = '✓ Payment method saved!';
+                    document.getElementById('paymentStatus').style.color = 'green';
+                    cardElement.clear();
+                } else {
+                    document.getElementById('paymentStatus').textContent = '✗ Error: ' + data.error;
+                    document.getElementById('paymentStatus').style.color = 'red';
                 }
             }
         });
 
-        // Load alarm
         async function loadAlarm() {
             triggeredAlarmId = false;
             try {
                 const response = await fetch('/alarm');
                 const data = await response.json();
-
                 currentAlarm = data.alarm;
-
                 const alarmDisplay = document.getElementById('alarmDisplay');
                 alarmDisplay.innerHTML = '';
-
                 if (!data.alarm || !data.alarm.alarm_time) {
                     alarmDisplay.innerHTML = '<p>No alarm set</p>';
                     return;
                 }
-
                 alarmDisplay.innerHTML = `
           <div class="alarm-item">
             <span>Alarm at ${data.alarm.alarm_time} - ${data.alarm.alarm_distance}m</span>
             <button onclick="deleteAlarm()">Delete</button>
           </div>
         `;
-
                 if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                     navigator.serviceWorker.controller.postMessage({
                         type: 'SET_ALARM',
@@ -293,72 +253,45 @@
 
         loadAlarm();
 
-        // Load challenge state
         async function loadChallengeState() {
             try {
                 const response = await fetch('/challenge/status');
                 const data = await response.json();
-
                 const challenge = data.challenge;
-
                 if (challenge.challenge_active) {
-                    console.log('Active challenge found, resuming...');
-
                     startLat = challenge.challenge_start_lat;
                     startLon = challenge.challenge_start_lon;
-
                     const startTime = new Date(challenge.challenge_start_time).getTime();
                     const now = Date.now();
                     const elapsedSeconds = Math.floor((now - startTime) / 1000);
                     let timeRemaining = Math.max(0, 10 - elapsedSeconds);
-
                     const minutes = Math.floor(timeRemaining / 60);
                     const seconds = timeRemaining % 60;
                     document.getElementById('timeRemaining').textContent = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
-
                     let remaining = timeRemaining;
                     resumeCountdownInterval = setInterval(async () => {
                         remaining--;
-
-                        if (remaining <= 0) {
-                            remaining = 0;
-                        }
-
+                        if (remaining <= 0) remaining = 0;
                         const mins = Math.floor(remaining / 60);
                         const secs = remaining % 60;
                         document.getElementById('timeRemaining').textContent = mins + ':' + (secs < 10 ? '0' : '') + secs;
-
                         if (remaining === 0 && !hasResumeCountdownFailed) {
                             hasResumeCountdownFailed = true;
                             clearInterval(resumeCountdownInterval);
-                            console.log('Time ran out!');
-                            try {
-                                await fetch('/challenge/fail', { method: 'POST' });
-                                alert('Time ran out! Challenge failed.');
-                            } catch (error) {
-                                console.error('Error failing challenge:', error);
-                            }
+                            await fetch('/challenge/fail', { method: 'POST' });
+                            alert('Time ran out! Challenge failed.');
                         }
                     }, 1000);
-
                     const distance = challenge.alarm_distance || 100;
                     navigator.geolocation.watchPosition(async (position) => {
                         const userLat = position.coords.latitude;
                         const userLon = position.coords.longitude;
-
                         const distanceTraveled = getDistance(startLat, startLon, userLat, userLon);
                         const distanceRemaining = Math.max(0, distance - distanceTraveled);
-
                         document.getElementById('distanceToGo').textContent = Math.round(distanceRemaining) + ' m';
-
                         if (distanceRemaining === 0) {
-                            console.log('Challenge complete!');
-                            try {
-                                await fetch('/challenge/complete', { method: 'POST' });
-                                alert('Challenge completed! You made it!');
-                            } catch (error) {
-                                console.error('Error completing challenge:', error);
-                            }
+                            await fetch('/challenge/complete', { method: 'POST' });
+                            alert('Challenge completed! You made it!');
                         }
                     });
                 }
@@ -369,66 +302,36 @@
 
         loadChallengeState();
 
-        // Create alarm form
         document.getElementById('createAlarmForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-
             const alarmTime = document.getElementById('alarmTimeInput').value + ':00';
             const alarmDistance = parseInt(document.getElementById('alarmDistanceInput').value);
-
-            try {
-                const response = await fetch('/alarm', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ alarmTime, alarmDistance })
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    document.getElementById('alarmTimeInput').value = '';
-                    document.getElementById('alarmDistanceInput').value = '100';
-                    loadAlarm();
-                } else {
-                    console.error('Error setting alarm:', data.error);
-                }
-            } catch (error) {
-                console.error('Error:', error);
+            const response = await fetch('/alarm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ alarmTime, alarmDistance })
+            });
+            if (response.ok) {
+                document.getElementById('alarmTimeInput').value = '';
+                document.getElementById('alarmDistanceInput').value = '100';
+                loadAlarm();
             }
         });
 
-        // Delete alarm
         async function deleteAlarm() {
-            try {
-                const response = await fetch('/alarm', {
-                    method: 'DELETE'
-                });
-
-                if (response.ok) {
-                    loadAlarm();
-                } else {
-                    console.error('Error deleting alarm');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-            }
+            await fetch('/alarm', { method: 'DELETE' });
+            loadAlarm();
         }
 
-        // Check alarms
         function checkAlarms() {
             if (!currentAlarm || !currentAlarm.alarm_time) return;
-
             const now = new Date();
             const currentHour = String(now.getHours()).padStart(2, '0');
             const currentMinute = String(now.getMinutes()).padStart(2, '0');
             const currentTime = `${currentHour}:${currentMinute}`;
-
             const alarmTimeShort = currentAlarm.alarm_time.substring(0, 5);
-
             if (currentTime === alarmTimeShort && !triggeredAlarmId) {
                 triggeredAlarmId = true;
-                console.log('Alarm triggered!');
-
                 if ('Notification' in window && Notification.permission === 'granted') {
                     new Notification('Alarm!', {
                         body: `Time to move ${currentAlarm.alarm_distance}m!`,
@@ -436,14 +339,12 @@
                         tag: 'alarm-notification'
                     });
                 }
-
                 startChallenge(currentAlarm.alarm_distance);
             }
         }
 
         setInterval(checkAlarms, 1000);
 
-        // Distance calculation
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371000;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -455,109 +356,62 @@
             return R * c;
         }
 
-        // Countdown (10 seconds for testing)
         function startCountdown() {
             if (countdownInterval) clearInterval(countdownInterval);
             if (resumeCountdownInterval) clearInterval(resumeCountdownInterval);
-
             let timeRemaining = 10;
             hasFailed = false;
-
             document.getElementById('timeRemaining').textContent = '0:10';
-
-
             countdownInterval = setInterval(async () => {
                 timeRemaining--;
-
-                if (timeRemaining <= 0) {
-                    timeRemaining = 0;
-                }
-
+                if (timeRemaining <= 0) timeRemaining = 0;
                 const minutes = Math.floor(timeRemaining / 60);
                 const seconds = timeRemaining % 60;
                 const timeString = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
-
                 document.getElementById('timeRemaining').textContent = timeString;
-
                 if (timeRemaining === 0 && !hasFailed) {
                     hasFailed = true;
                     clearInterval(countdownInterval);
-                    console.log('Time ran out!');
-                    try {
-                        const response = await fetch('/challenge/fail', { method: 'POST' });
-                        console.log('Fail response:', response);
-                        alert('Time ran out! Challenge failed.');
-                    } catch (error) {
-                        console.error('Error failing challenge:', error);
-                    }
+                    await fetch('/challenge/fail', { method: 'POST' });
+                    alert('Time ran out! Challenge failed.');
                 }
             }, 1000);
         }
 
-        // Start challenge
         async function startChallenge(distance) {
             if (!distance) distance = 100;
             startLat = null;
             startLon = null;
-            console.log('Challenge Started with distance goal:', distance);
-
             startCountdown();
-
             navigator.geolocation.watchPosition(async (position) => {
                 const userLat = position.coords.latitude;
                 const userLon = position.coords.longitude;
-
                 if (startLat == null) {
                     startLat = userLat;
                     startLon = userLon;
-                    console.log('Starting location saved:', startLat, startLon);
-
-                    try {
-                        await fetch('/challenge/start', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ startLat, startLon })
-                        });
-                    } catch (error) {
-                        console.error('Error saving challenge state:', error);
-                    }
+                    await fetch('/challenge/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ startLat, startLon })
+                    });
                 }
-
                 const distanceTraveled = getDistance(startLat, startLon, userLat, userLon);
                 const distanceRemaining = Math.max(0, distance - distanceTraveled);
-
                 document.getElementById('distanceToGo').textContent = Math.round(distanceRemaining) + ' m';
-
                 if (distanceRemaining === 0) {
-                    console.log('Challenge complete!');
-                    try {
-                        await fetch('/challenge/complete', { method: 'POST' });
-                        alert('Challenge completed! You made it!');
-                    } catch (error) {
-                        console.error('Error completing challenge:', error);
-                    }
+                    await fetch('/challenge/complete', { method: 'POST' });
+                    alert('Challenge completed! You made it!');
                 }
             });
         }
 
-        // Start button
         document.getElementById('startBtn').addEventListener('click', () => {
             startChallenge(currentAlarm ? currentAlarm.alarm_distance : 100);
         });
 
-        // Logout button
         document.getElementById('logoutBtn').addEventListener('click', async () => {
-            try {
-                const response = await fetch('/logout', {
-                    method: 'POST'
-                });
-
-                if (response.ok) {
-                    window.location.href = '/auth.html';
-                }
-            } catch (error) {
-                console.error('Logout error:', error);
-            }
+            await fetch('/logout', { method: 'POST' });
+            window.location.href = '/auth.html';
         });
     </script>
 </body>
