@@ -38,18 +38,20 @@ try {
     const passwordMatch = bcrypt.compareSync(password, user.password);
 
     if(passwordMatch){
-        const sessionNum = 
-        sessions[user.id] = 
+        const sessionId = crypto.randomUUID();
+        sessions[user.id] = {userId: user.id};
+        
+        res.cookies(userId, user.id
+            
+        )
+
     }
 
 }catch (error) {
     res.status(400);
 }
 
-
-
-
-})
+});
 
 //signup 
 app.post('/signup', async (req, res) => {
